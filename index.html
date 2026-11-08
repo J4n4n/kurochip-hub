@@ -4174,8 +4174,8 @@
     <div class="panel" style="margin-top:14px">
       <b>پرداخت چطور انجام می‌شود؟</b>
       <p style="margin-top:6px;font-size:13px;line-height:1.9;color:var(--text-muted)">
-        <b>با تون:</b> اول سفارشت در سرور ثبت می‌شود، بعد کیف پول تلگرامت (Wallet) با آدرس ولت کوروچیپ و مبلغ دقیق باز می‌شود — پرداخت مستقیم به همان ولت می‌رسد و شماره‌ی سفارش در توضیح انتقال می‌نشیند تا قابل پیگیری باشد. اگر کیف پول خودکار باز نشد، روی سفارشت در بخش «سفارش‌های من» دکمه‌ی «پرداخت با کیف پول تلگرام» هست؛ همان را بزن.<br/>
-        <b>با استارز:</b> سفارشت ثبت می‌شود و بعد چت ربات کوروچیپ باز می‌شود تا فاکتور استارز همان‌جا صادر شود. اگر چت خودکار باز نشد، دکمه‌ی «ادامه‌ی پرداخت در ربات» روی سفارشت در «سفارش‌های من» همان کار را می‌کند.<br/>
+        <b>با تون:</b> به محض زدن دکمه‌ی خرید، سفارشت ساخته می‌شود و کیف پول تلگرامت (Wallet) با آدرس ولت کوروچیپ و مبلغ دقیق باز می‌شود — پرداخت مستقیم به همان ولت می‌رسد و شماره‌ی سفارش در توضیح انتقال می‌نشیند تا قابل پیگیری باشد. اگر کیف پول خودکار باز نشد، روی سفارشت در بخش «سفارش‌های من» دو دکمه داری: «پرداخت با کیف پول تلگرام» یا «پرداخت با تون‌کیپر» — هرکدام را که داری بزن.<br/>
+        <b>با استارز:</b> به محض زدن دکمه‌ی خرید، سفارشت ساخته می‌شود و چت ربات کوروچیپ باز می‌شود تا فاکتور استارز همان‌جا صادر شود. اگر چت خودکار باز نشد، دکمه‌ی «ادامه‌ی پرداخت در ربات» روی سفارشت در «سفارش‌های من» همان کار را می‌کند.<br/>
         در هر دو روش، سکه فقط بعد از تأیید پرداخت در سیستم اضافه می‌شود — وضعیت سفارشت را از بخش «سفارش‌های من» ببین. بازی همیشه رایگان است — سکه فقط امتیاز و رکورد است و خریدش کاملاً اختیاری.
       </p>
       <div class="sheet-list" style="margin-top:10px">
@@ -4957,11 +4957,18 @@ const PLAYER_ID = (()=>{
 })();
 async function sbRest(path, opts){
   opts = opts || {};
-  const res = await fetch(SB_URL + path, {
-    method: opts.method || "GET",
-    headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" },
-    body: opts.body ? JSON.stringify(opts.body) : undefined
-  });
+  /* a hung request must never freeze a button or a match: cap every call */
+  const ctl = ("AbortController" in window) ? new AbortController() : null;
+  const timer = ctl ? setTimeout(()=>{ try{ ctl.abort(); }catch(e){} }, 15000) : null;
+  let res;
+  try{
+    res = await fetch(SB_URL + path, {
+      method: opts.method || "GET",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json", "Prefer": "return=representation" },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: ctl ? ctl.signal : undefined
+    });
+  } finally { if (timer) clearTimeout(timer); }
   const txt = await res.text();
   let data = null; try{ data = txt ? JSON.parse(txt) : null; }catch(e){}
   if (!res.ok) throw new Error("HTTP " + res.status + " " + txt.slice(0, 160));
@@ -7408,12 +7415,20 @@ function packCoinsOf(order){ const m = /(\d+)/.exec(order && order.pack || ""); 
 function starsBotUrl(coins, orderId){ return "https://t.me/KuroChipBot?start=stars_" + coins + "_" + orderId; }
 function openBotChat(url){
   if (TG && TG.openTelegramLink){ try{ TG.openTelegramLink(url); return; }catch(e){} }
+  if (TG && TG.openLink){ try{ TG.openLink(url); return; }catch(e){} }
   window.open(url, "_blank", "noopener");
 }
+function tonComment(coins, orderId){ return "KuroChip " + coins + " coins order " + String(orderId || "").slice(0, 8); }
 function tonTransferUrl(coins, tonAmount, orderId){
   const nano = Math.round((+tonAmount || 0) * 1e9);
-  const comment = "KuroChip " + coins + " coins order " + String(orderId || "").slice(0, 8);
-  return "ton://transfer/" + TON_WALLET_ADDR + "?amount=" + nano + "&text=" + encodeURIComponent(comment);
+  return "ton://transfer/" + TON_WALLET_ADDR + "?amount=" + nano + "&text=" + encodeURIComponent(tonComment(coins, orderId));
+}
+/* HTTPS universal link — opens Tonkeeper (app or web) with the same
+   transfer prefilled; the fallback for clients where the ton://
+   scheme has no handler and silently does nothing */
+function tonkeeperUrl(coins, tonAmount, orderId){
+  const nano = Math.round((+tonAmount || 0) * 1e9);
+  return "https://app.tonkeeper.com/transfer/" + TON_WALLET_ADDR + "?amount=" + nano + "&text=" + encodeURIComponent(tonComment(coins, orderId));
 }
 function openTonWallet(coins, tonAmount, orderId){
   const url = tonTransferUrl(coins, tonAmount, orderId);
@@ -7423,11 +7438,42 @@ function openTonWallet(coins, tonAmount, orderId){
   const a = document.createElement("a");
   a.href = url; document.body.appendChild(a); a.click(); a.remove();
 }
-async function createOrder(pack, method){
+function openTonkeeper(coins, tonAmount, orderId){
+  const url = tonkeeperUrl(coins, tonAmount, orderId);
+  if (TG && TG.openLink){ try{ TG.openLink(url); return; }catch(e){} }
+  window.open(url, "_blank", "noopener");
+}
+/* the order id is minted HERE, in the tap, so the payment links are
+   known synchronously — the tap never waits on the network, and the
+   server row (written in the background with this same id) matches
+   the link the buyer actually pays through */
+function newOrderId(){
+  try{ if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+async function createOrder(pack, method, id){
   const rows = await sbRest("/rest/v1/coin_purchases", { method:"POST", body:{
-    user_id: PLAYER_ID, pack: "coins_" + pack.coins, method, amount: method === "ton" ? pack.ton : pack.stars, status: "pending"
+    id, user_id: PLAYER_ID, pack: "coins_" + pack.coins, method, amount: method === "ton" ? pack.ton : pack.stars, status: "pending"
   }});
   return rows && rows[0];
+}
+/* orders created on this device, shown instantly — the list never
+   waits for the server round-trip or the 5s poll to acknowledge a tap */
+const localOrders = [];
+let lastServerRows = [];
+function mergedOrders(){
+  const serverIds = new Set(lastServerRows.map(o => o.id));
+  const fresh = localOrders.filter(o => !serverIds.has(o.id));
+  return fresh.concat(lastServerRows).slice(0, 10);
+}
+function addLocalOrder(order){
+  localOrders.unshift(order);
+  renderOrders(mergedOrders());
+  const box = document.getElementById("myPurchases");
+  if (box) box.scrollIntoView({ block:"nearest", behavior:"smooth" });
 }
 function orderStatusFa(st){
   if (st === "confirmed" || st === "credited") return ["تأیید شد — سکه اضافه شد", st];
@@ -7441,11 +7487,15 @@ function renderOrders(rows){
   box.innerHTML = rows.map(o => {
     const [label, cls] = orderStatusFa(o.status);
     const when = o.created_at ? new Date(o.created_at).toLocaleDateString("fa-IR") : "";
-    /* a pending order always carries its own real pay action, so the
-       payment never depends on the auto-open right after ordering */
+    /* a pending order always carries its own real pay actions, so the
+       payment never depends on the auto-open right after ordering.
+       TON gets two: the Telegram Wallet scheme link AND the HTTPS
+       Tonkeeper universal link — whichever wallet the buyer has,
+       one of the two opens with the transfer prefilled. */
+    const oc = packCoinsOf(o);
     const action = o.status !== "pending" ? "" : o.method === "ton"
-      ? `<a class="order-pay" href="${tonTransferUrl(packCoinsOf(o), o.amount, o.id)}">پرداخت با کیف پول تلگرام ←</a>`
-      : `<button type="button" class="order-pay stars" data-stars-resume="${o.id}" data-stars-coins="${packCoinsOf(o)}">ادامه‌ی پرداخت در ربات ←</button>`;
+      ? `<a class="order-pay" href="${tonTransferUrl(oc, o.amount, o.id)}" data-ton-pay="${o.id}" data-ton-coins="${oc}" data-ton-amount="${o.amount}">پرداخت با کیف پول تلگرام ←</a><button type="button" class="order-pay" data-tonkeeper-pay="${o.id}" data-ton-coins="${oc}" data-ton-amount="${o.amount}">پرداخت با تون‌کیپر ←</button>`
+      : `<button type="button" class="order-pay stars" data-stars-resume="${o.id}" data-stars-coins="${oc}">ادامه‌ی پرداخت در ربات ←</button>`;
     return `<div class="order-row">
       <div class="o-main"><b>${faN(packCoinsOf(o))} سکه</b><span>${o.method === "ton" ? "پرداخت با تون · " + faN(o.amount) + " TON" : "پرداخت با استارز · " + faN(o.amount) + " استارز"}${when ? " · " + when : ""} · سفارش ${String(o.id || "").slice(0, 8)}</span></div>
       ${action}
@@ -7456,6 +7506,22 @@ function renderOrders(rows){
     Snd.tap();
     openBotChat(starsBotUrl(+b.dataset.starsCoins, b.dataset.starsResume));
     toast("چت ربات باز شد — فاکتور استارز همان‌جا صادر می‌شود و بعد از پرداخت، سکه خودکار اینجا می‌نشیند");
+  }));
+  /* inside Telegram, route the ton:// tap through the WebApp bridge
+     (a raw anchor tap can be swallowed by the WebView); outside
+     Telegram the anchor's own href still applies */
+  $$("[data-ton-pay]", box).forEach(a => a.addEventListener("click", e =>{
+    if (TG && TG.openLink){
+      e.preventDefault();
+      Snd.tap();
+      openTonWallet(+a.dataset.tonCoins, +a.dataset.tonAmount, a.dataset.tonPay);
+      toast("کیف پول تلگرامت باز شد — مبلغ و شماره‌ی سفارش از قبل پر شده؛ اگر باز نشد، دکمه‌ی «پرداخت با تون‌کیپر» را بزن");
+    }
+  }));
+  $$("[data-tonkeeper-pay]", box).forEach(b => b.addEventListener("click", ()=>{
+    Snd.tap();
+    openTonkeeper(+b.dataset.tonCoins, +b.dataset.tonAmount, b.dataset.tonkeeperPay);
+    toast("تون‌کیپر باز شد — مبلغ و شماره‌ی سفارش از قبل پر شده");
   }));
 }
 function maybeCredit(order){
@@ -7469,8 +7535,9 @@ function maybeCredit(order){
 }
 async function loadOrders(){
   const rows = await sbRest("/rest/v1/coin_purchases?user_id=eq." + encodeURIComponent(PLAYER_ID) + "&order=created_at.desc&limit=10&select=*");
-  renderOrders(rows || []);
-  (rows || []).forEach(maybeCredit);
+  lastServerRows = rows || [];
+  renderOrders(mergedOrders());
+  lastServerRows.forEach(maybeCredit);
 }
 function watchOrders(){
   if (ordersWatchTimer) return;
@@ -7490,29 +7557,41 @@ function watchOrders(){
         <button class="pay-btn pay-ton" data-ton-pack="${i}">خرید با ${faN(p.ton)} تون</button>
       </div>
     </div>`).join("");
-  $$("[data-stars-pack]", grid).forEach(b => b.addEventListener("click", async ()=>{
+  /* Buy flow — the tap itself does everything, synchronously:
+     1) the order appears in «سفارش‌های من» at once (local row),
+     2) the payment opens INSIDE this same tap, while the browser /
+        Telegram still counts it as the user's own gesture — the old
+        flow awaited the server first, and by then the gesture was
+        gone, slow networks left the button sitting disabled, and
+        the wallet / bot open was silently swallowed,
+     3) the server row is written in the background with the SAME id
+        the payment link carries; if that write fails, the local
+        order and its pay buttons stay put and still work. */
+  function armButton(b){
+    b.disabled = true;
+    setTimeout(()=>{ b.disabled = false; }, 900);
+  }
+  $$("[data-stars-pack]", grid).forEach(b => b.addEventListener("click", ()=>{
     const pack = SHOP_PACKS[+b.dataset.starsPack];
-    b.disabled = true; const old = b.textContent; b.textContent = "در حال ثبت سفارش روی سرور…";
-    try{
-      const order = await createOrder(pack, "stars");
-      if (!order) throw new Error("no order");
-      watchOrders();
-      toast("سفارشت ثبت شد — چت ربات باز می‌شود تا فاکتور استارز همان‌جا صادر شود؛ سکه فقط بعد از تأیید پرداخت اضافه می‌شود");
-      openBotChat(starsBotUrl(pack.coins, order.id));
-    }catch(e){ toast("ثبت سفارش نشد — اتصالت را چک کن و دوباره تلاش کن"); }
-    b.disabled = false; b.textContent = old;
+    Snd.tap(); armButton(b);
+    const id = newOrderId();
+    addLocalOrder({ id, user_id: PLAYER_ID, pack: "coins_" + pack.coins, method: "stars", amount: pack.stars, status: "pending", created_at: new Date().toISOString() });
+    openBotChat(starsBotUrl(pack.coins, id));
+    toast("سفارشت ساخته شد و چت ربات باز شد — فاکتور استارز همان‌جا صادر می‌شود؛ اگر باز نشد، از «سفارش‌های من» دکمه‌ی پرداخت را بزن. سکه فقط بعد از تأیید پرداخت اضافه می‌شود");
+    createOrder(pack, "stars", id)
+      .then(()=>{ watchOrders(); loadOrders().catch(()=>{}); })
+      .catch(()=>{ toast("ثبت سفارش روی سرور کامل نشد — سفارشت در «سفارش‌های من» هست و دکمه‌ی پرداختش کار می‌کند"); });
   }));
-  $$("[data-ton-pack]", grid).forEach(b => b.addEventListener("click", async ()=>{
+  $$("[data-ton-pack]", grid).forEach(b => b.addEventListener("click", ()=>{
     const pack = SHOP_PACKS[+b.dataset.tonPack];
-    b.disabled = true; const old = b.textContent; b.textContent = "در حال ثبت سفارش روی سرور…";
-    try{
-      const order = await createOrder(pack, "ton");
-      if (!order) throw new Error("no order");
-      watchOrders();
-      toast("سفارشت ثبت شد — کیف پول تلگرامت باز می‌شود؛ اگر باز نشد، دکمه‌ی پرداختِ سفارشت در «سفارش‌های من» هست. سکه فقط بعد از تأیید پرداخت اضافه می‌شود، نه با کلیک");
-      openTonWallet(pack.coins, pack.ton, order.id);
-    }catch(e){ toast("ثبت سفارش نشد — اتصالت را چک کن و دوباره تلاش کن"); }
-    b.disabled = false; b.textContent = old;
+    Snd.tap(); armButton(b);
+    const id = newOrderId();
+    addLocalOrder({ id, user_id: PLAYER_ID, pack: "coins_" + pack.coins, method: "ton", amount: pack.ton, status: "pending", created_at: new Date().toISOString() });
+    openTonWallet(pack.coins, pack.ton, id);
+    toast("سفارشت ساخته شد و کیف پول تلگرامت باز شد — اگر باز نشد، در «سفارش‌های من» دو دکمه‌ی پرداخت داری: کیف پول تلگرام یا تون‌کیپر. سکه فقط بعد از تأیید پرداخت اضافه می‌شود، نه با کلیک");
+    createOrder(pack, "ton", id)
+      .then(()=>{ watchOrders(); loadOrders().catch(()=>{}); })
+      .catch(()=>{ toast("ثبت سفارش روی سرور کامل نشد — سفارشت در «سفارش‌های من» هست و دکمه‌های پرداختش کار می‌کنند"); });
   }));
   const cp = document.getElementById("copyTonAddr");
   if (cp) cp.addEventListener("click", ()=>{
