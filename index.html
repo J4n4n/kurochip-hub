@@ -5403,7 +5403,11 @@ function gameApi(id){
     thinkMs(){ const [lo, hi] = P.think; return lo + Math.random() * (hi - lo); },
     finish(result, bestText){   // result: 'win' | 'lose' | 'draw'
       state.plays++; state.matchesPlayed[id]++;
-      if (result === "win"){ state.wins++; state.chips += 25; }
+      if (result === "win"){ state.wins++; if (id !== "mines") state.chips += 25; }
+      /* Mines is the exception above: it is a betting game that already
+         banks its real payout (bet x multiplier) on cash-out, so the flat
+         +25 win bonus must not stack on top — a 1-coin bet cashed out at
+         once would otherwise mint 25 free coins every round. */
       /* XP is earned here and only here: 10 per finished match,
          +20 for a win, +5 for a draw — level derives from XP alone */
       const lvlBefore = levelInfo(state.xp).level;
@@ -5428,7 +5432,7 @@ function gameApi(id){
         const firstEver = state.plays === 1;
         celebrate(state.celeb, firstEver ? "epic" : "full"); Snd.win(); haptic("notify","success");
         mascotSay("win");
-        showTakeover(firstEver ? "اولین برد" : "تو بردی", "+۲۵ سکه · " + (state.wins >= 5 ? "برنز ۲" : "برنز ۱"), firstEver ? 2100 : 1400);
+        showTakeover(firstEver ? "اولین برد" : "تو بردی", (id === "mines" ? "" : "+۲۵ سکه · ") + (state.wins >= 5 ? "برنز ۲" : "برنز ۱"), firstEver ? 2100 : 1400);
       }
       else if (result === "lose"){ Snd.lose(); haptic("notify","error"); mascotSay("lose"); }
       else { Snd.draw(); celebrate(state.celeb, "light"); }
@@ -6358,7 +6362,7 @@ GAMES.mines = {
       api.finish("win", (fullClear ? "پاک‌سازی ×" : "برداشت ×") + mult.toFixed(2));
       api.banner($("#mnBanner", body), "win",
         fullClear ? "پاک‌سازی کامل — همه‌ی الماس‌ها پیدا شدند!" : "برداشت +" + fmt(payout) + " سکه",
-        "ضریب ×" + mult.toFixed(2) + " بعد از " + picks + " برگردان امن روی شرط " + fmt(bet) + " سکه‌ای، به‌همراه جایزه‌ی برد +۲۵. دانستنِ وقت توقف، کل بازی است.");
+        "ضریب ×" + mult.toFixed(2) + " بعد از " + picks + " برگردان امن روی شرط " + fmt(bet) + " سکه‌ای. دانستنِ وقت توقف، کل بازی است.");
       updatePanel();
     }
     $("#mnBetBtn", body).addEventListener("click", placeBet);
