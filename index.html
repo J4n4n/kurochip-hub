@@ -745,6 +745,7 @@
      programmatic open right after ordering can be swallowed by the
      WebView, a genuine user tap on this link/button cannot */
   .order-pay{ font-size:12.5px; font-weight:900; padding:8px 13px; border-radius:99px; background:linear-gradient(180deg,#0E4A6E,#093650); color:#D8F3FF; border:1px solid rgba(56,189,248,.55); text-decoration:none; cursor:pointer; white-space:nowrap; font-family:inherit; }
+  .order-code{ display:block; margin-top:3px; font-size:10.5px; direction:ltr; text-align:right; word-break:break-all; user-select:all; -webkit-user-select:all; color:var(--hint); }
   .order-pay.stars{ background:linear-gradient(180deg,#3B2E6E,#2A2150); color:#E9E4FF; border-color:rgba(167,139,250,.55); }
   .order-pay:active{ transform:scale(.96); }
   /* shop: coin packs paid with Telegram Stars or TON */
@@ -4174,7 +4175,8 @@
     <div class="panel" style="margin-top:14px">
       <b>پرداخت چطور انجام می‌شود؟</b>
       <p style="margin-top:6px;font-size:13px;line-height:1.9;color:var(--text-muted)">
-        <b>با تون:</b> به محض زدن دکمه‌ی خرید، سفارشت ساخته می‌شود و کیف پول تلگرامت (Wallet) با آدرس ولت کوروچیپ و مبلغ دقیق باز می‌شود — پرداخت مستقیم به همان ولت می‌رسد و شماره‌ی سفارش در توضیح انتقال می‌نشیند تا قابل پیگیری باشد. اگر کیف پول خودکار باز نشد، روی سفارشت در بخش «سفارش‌های من» دو دکمه داری: «پرداخت با کیف پول تلگرام» یا «پرداخت با تون‌کیپر» — هرکدام را که داری بزن.<br/>
+        <b>با تون:</b> به محض زدن دکمه‌ی خرید، سفارشت ساخته می‌شود و صفحه‌ی پرداخت تون‌کیپر با آدرس ولت کوروچیپ و مبلغ دقیق باز می‌شود. (قبلاً دکمه مستقیم سراغ لینک ton:// می‌رفت که روی خیلی از گوشی‌ها خطای ERR_UNKNOWN_URL_SCHEME می‌داد؛ لینک جدید https است و همه‌جا باز می‌شود.) اگر کیف پول تلگرام (Wallet) داری و ترجیحش می‌دهی، روی سفارشت در بخش «سفارش‌های من» دکمه‌ی «پرداخت با کیف پول تلگرام» هم هست.<br/>
+        <b>پرداختت چطور دقیقاً به خودت می‌رسد؟</b> در توضیح (کامنت) هر انتقال، کد کامل و یکتای سفارشت همراه با برچسبی از آیدی تلگرام خودت می‌نشیند. سیستم فقط وقتی پرداختی را تأیید می‌کند که هر دو — کد سفارش و برچسب کاربر — با همان سفارش یکی باشند؛ پس پرداخت یک کاربر هیچ‌وقت روی سفارش کاربر دیگری نمی‌نشیند و برعکس. اگر دستی پرداخت می‌کنی، کد کامل سفارشت را از «سفارش‌های من» عیناً در کامنت انتقال بنویس و تغییرش نده.<br/>
         <b>با استارز:</b> به محض زدن دکمه‌ی خرید، سفارشت ساخته می‌شود و چت ربات کوروچیپ باز می‌شود تا فاکتور استارز همان‌جا صادر شود. اگر چت خودکار باز نشد، دکمه‌ی «ادامه‌ی پرداخت در ربات» روی سفارشت در «سفارش‌های من» همان کار را می‌کند.<br/>
         در هر دو روش، سکه فقط بعد از تأیید پرداخت در سیستم اضافه می‌شود — وضعیت سفارشت را از بخش «سفارش‌های من» ببین. بازی همیشه رایگان است — سکه فقط امتیاز و رکورد است و خریدش کاملاً اختیاری.
       </p>
@@ -7387,13 +7389,29 @@ $$("[data-mode-open]").forEach(b => b.addEventListener("click", ()=>{
    Every purchase is FIRST written to coin_purchases on the
    kurochip-games Supabase project (user_id / pack / method /
    amount / status=pending), and only then does the payment rail
-   open: TON deep-links into the buyer's Telegram Wallet with
-   Janan's TON address, the exact amount and the order id in the
-   transfer comment; Stars deep-links into @KuroChipBot, which
-   issues the invoice bot-side. Coins are NEVER credited on a
-   click: the shop watches the order rows, and only when a row's
-   status becomes "confirmed" are its coins added — once — and
-   the row is then marked "credited" so it can never pay twice. */
+   open: TON opens the Tonkeeper HTTPS universal link (the ton://
+   scheme is only a secondary button — see the handoff note
+   below) with Janan's TON address and the exact amount; Stars
+   deep-links into @KuroChipBot, which issues the invoice
+   bot-side. Coins are NEVER credited on a click: the shop
+   watches the order rows, and only when a row's status becomes
+   "confirmed" are its coins added — once — and the row is then
+   marked "credited" so it can never pay twice.
+   PER-USER MATCHING CONTRACT (the bot / payment checker must
+   follow exactly this, so one user's payment can never land on
+   another user's order):
+   - Every TON transfer comment is
+     "KuroChip <coins> coins order <FULL order uuid> <buyer tag>"
+     where the buyer tag is "u" + the buyer's Telegram numeric id
+     (PLAYER_ID without the "tg:" prefix; web guests get "w" +
+     their session id instead).
+   - A TON payment confirms an order ONLY when the comment's full
+     order uuid matches the order row AND the comment's buyer tag
+     equals that row's user_id. Amount alone NEVER matches —
+     two users buying the same pack send the same amount.
+   - Stars: the start param carries the full order uuid, and the
+     payer's Telegram id on the payment event must equal the
+     order row's user_id before the row may be confirmed. */
 const TON_WALLET_ADDR = "UQC1terRdrWX8dJxYBUcfO0QUcTAJDsL67HwQLrdJY_-e9kJ";
 const SHOP_PACKS = [
   { coins:500,   stars:10,  ton:0.1,  nano:100000000,  sub:"شروع سریع — برای چند دور مین‌ها و بازی‌های برق‌آسا" },
@@ -7411,30 +7429,55 @@ function packCoinsOf(order){ const m = /(\d+)/.exec(order && order.pack || ""); 
    the Telegram WebApp APIs (openTelegramLink / openLink), and
    every pending order ALSO keeps a real tappable pay action in
    «سفارش‌های من» (see renderOrders) so the payment can always be
-   completed with a genuine tap. */
+   completed with a genuine tap.
+   TON scheme note: ton:// has NO registered handler in many
+   Telegram WebViews (no Wallet set up, Telegram X, some desktop /
+   iOS builds) — opening it lands the buyer on an
+   ERR_UNKNOWN_URL_SCHEME page, which is exactly the error that
+   kept being reported. So ton:// is NEVER opened automatically
+   any more: the primary TON action is the Tonkeeper HTTPS
+   universal link (an https:// URL always has a handler, and the
+   Tonkeeper page hands off to the app or shows the transfer in
+   the browser). The ton:// Telegram-Wallet link survives only as
+   a clearly separate, second button on the order itself. */
 function starsBotUrl(coins, orderId){ return "https://t.me/KuroChipBot?start=stars_" + coins + "_" + orderId; }
 function openBotChat(url){
   if (TG && TG.openTelegramLink){ try{ TG.openTelegramLink(url); return; }catch(e){} }
   if (TG && TG.openLink){ try{ TG.openLink(url); return; }catch(e){} }
   window.open(url, "_blank", "noopener");
 }
-function tonComment(coins, orderId){ return "KuroChip " + coins + " coins order " + String(orderId || "").slice(0, 8); }
+/* the buyer's own tag, embedded in every payment reference: "u" +
+   the Telegram numeric id inside Telegram (unique per person,
+   unforgeable by another buyer), "w" + session id for web guests */
+function buyerTag(){
+  const m = /^tg:(\d+)$/.exec(PLAYER_ID || "");
+  if (m) return "u" + m[1];
+  return "w" + String(PLAYER_ID || "").replace(/^web:/, "").slice(0, 10);
+}
+/* the transfer comment carries the FULL order uuid AND the buyer
+   tag — the payment checker matches on both (see the contract in
+   the SHOP header comment), never on the amount alone. The old
+   format truncated the id to 8 chars; the full uuid keeps every
+   prefix-based check working while making collisions impossible. */
+function tonComment(coins, orderId){ return "KuroChip " + coins + " coins order " + String(orderId || "") + " " + buyerTag(); }
 function tonTransferUrl(coins, tonAmount, orderId){
   const nano = Math.round((+tonAmount || 0) * 1e9);
   return "ton://transfer/" + TON_WALLET_ADDR + "?amount=" + nano + "&text=" + encodeURIComponent(tonComment(coins, orderId));
 }
-/* HTTPS universal link — opens Tonkeeper (app or web) with the same
-   transfer prefilled; the fallback for clients where the ton://
-   scheme has no handler and silently does nothing */
+/* HTTPS universal link — THE primary TON route: opens Tonkeeper
+   (app or web) with the same transfer prefilled, and unlike the
+   ton:// scheme it can never hit ERR_UNKNOWN_URL_SCHEME */
 function tonkeeperUrl(coins, tonAmount, orderId){
   const nano = Math.round((+tonAmount || 0) * 1e9);
   return "https://app.tonkeeper.com/transfer/" + TON_WALLET_ADDR + "?amount=" + nano + "&text=" + encodeURIComponent(tonComment(coins, orderId));
 }
+/* secondary route only, fired solely by the order's own explicit
+   «کیف پول تلگرام» button — never automatically */
 function openTonWallet(coins, tonAmount, orderId){
   const url = tonTransferUrl(coins, tonAmount, orderId);
   if (TG && TG.openLink){ try{ TG.openLink(url); return; }catch(e){} }
   /* outside Telegram: follow the transfer link with a real anchor
-     (this runs inside the buy button's own click gesture) */
+     (this runs inside the button's own click gesture) */
   const a = document.createElement("a");
   a.href = url; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -7489,15 +7532,19 @@ function renderOrders(rows){
     const when = o.created_at ? new Date(o.created_at).toLocaleDateString("fa-IR") : "";
     /* a pending order always carries its own real pay actions, so the
        payment never depends on the auto-open right after ordering.
-       TON gets two: the Telegram Wallet scheme link AND the HTTPS
-       Tonkeeper universal link — whichever wallet the buyer has,
-       one of the two opens with the transfer prefilled. */
+       TON gets two: the Tonkeeper HTTPS universal link FIRST (it
+       opens in every client — the old primary, the ton:// scheme,
+       is what produced ERR_UNKNOWN_URL_SCHEME), and the ton://
+       Telegram-Wallet link second for buyers whose client does
+       handle the scheme. Both carry the full order code + buyer
+       tag in the comment, and the full code is printed on the row
+       so a manual payer copies it exactly. */
     const oc = packCoinsOf(o);
     const action = o.status !== "pending" ? "" : o.method === "ton"
-      ? `<a class="order-pay" href="${tonTransferUrl(oc, o.amount, o.id)}" data-ton-pay="${o.id}" data-ton-coins="${oc}" data-ton-amount="${o.amount}">پرداخت با کیف پول تلگرام ←</a><button type="button" class="order-pay" data-tonkeeper-pay="${o.id}" data-ton-coins="${oc}" data-ton-amount="${o.amount}">پرداخت با تون‌کیپر ←</button>`
+      ? `<button type="button" class="order-pay" data-tonkeeper-pay="${o.id}" data-ton-coins="${oc}" data-ton-amount="${o.amount}">پرداخت با تون‌کیپر ←</button><a class="order-pay" href="${tonTransferUrl(oc, o.amount, o.id)}" data-ton-pay="${o.id}" data-ton-coins="${oc}" data-ton-amount="${o.amount}">پرداخت با کیف پول تلگرام ←</a>`
       : `<button type="button" class="order-pay stars" data-stars-resume="${o.id}" data-stars-coins="${oc}">ادامه‌ی پرداخت در ربات ←</button>`;
     return `<div class="order-row">
-      <div class="o-main"><b>${faN(packCoinsOf(o))} سکه</b><span>${o.method === "ton" ? "پرداخت با تون · " + faN(o.amount) + " TON" : "پرداخت با استارز · " + faN(o.amount) + " استارز"}${when ? " · " + when : ""} · سفارش ${String(o.id || "").slice(0, 8)}</span></div>
+      <div class="o-main"><b>${faN(packCoinsOf(o))} سکه</b><span>${o.method === "ton" ? "پرداخت با تون · " + faN(o.amount) + " TON" : "پرداخت با استارز · " + faN(o.amount) + " استارز"}${when ? " · " + when : ""} · سفارش ${String(o.id || "").slice(0, 8)}</span><span class="order-code">${o.id || ""}</span></div>
       ${action}
       <span class="order-chip ${cls}">${label}</span>
     </div>`;
@@ -7507,15 +7554,16 @@ function renderOrders(rows){
     openBotChat(starsBotUrl(+b.dataset.starsCoins, b.dataset.starsResume));
     toast("چت ربات باز شد — فاکتور استارز همان‌جا صادر می‌شود و بعد از پرداخت، سکه خودکار اینجا می‌نشیند");
   }));
-  /* inside Telegram, route the ton:// tap through the WebApp bridge
-     (a raw anchor tap can be swallowed by the WebView); outside
-     Telegram the anchor's own href still applies */
+  /* the ton:// Wallet link is the secondary route: route its tap
+     through the WebApp bridge inside Telegram; if the client has
+     no handler for the scheme it may still show the scheme error —
+     the Tonkeeper button above it is the one that always works */
   $$("[data-ton-pay]", box).forEach(a => a.addEventListener("click", e =>{
     if (TG && TG.openLink){
       e.preventDefault();
       Snd.tap();
       openTonWallet(+a.dataset.tonCoins, +a.dataset.tonAmount, a.dataset.tonPay);
-      toast("کیف پول تلگرامت باز شد — مبلغ و شماره‌ی سفارش از قبل پر شده؛ اگر باز نشد، دکمه‌ی «پرداخت با تون‌کیپر» را بزن");
+      toast("کیف پول تلگرامت باز شد — مبلغ و کد کامل سفارش از قبل پر شده؛ اگر خطای باز نشدن دیدی، دکمه‌ی «پرداخت با تون‌کیپر» را بزن که همیشه باز می‌شود");
     }
   }));
   $$("[data-tonkeeper-pay]", box).forEach(b => b.addEventListener("click", ()=>{
@@ -7587,8 +7635,12 @@ function watchOrders(){
     Snd.tap(); armButton(b);
     const id = newOrderId();
     addLocalOrder({ id, user_id: PLAYER_ID, pack: "coins_" + pack.coins, method: "ton", amount: pack.ton, status: "pending", created_at: new Date().toISOString() });
-    openTonWallet(pack.coins, pack.ton, id);
-    toast("سفارشت ساخته شد و کیف پول تلگرامت باز شد — اگر باز نشد، در «سفارش‌های من» دو دکمه‌ی پرداخت داری: کیف پول تلگرام یا تون‌کیپر. سکه فقط بعد از تأیید پرداخت اضافه می‌شود، نه با کلیک");
+    /* open the HTTPS Tonkeeper link, NOT ton:// — the scheme is
+       what kept producing ERR_UNKNOWN_URL_SCHEME on the buyer's
+       phone; the ton:// Wallet route stays as a manual second
+       button on the order row itself */
+    openTonkeeper(pack.coins, pack.ton, id);
+    toast("سفارشت ساخته شد و صفحه‌ی پرداخت تون‌کیپر باز شد — مبلغ و کد کامل سفارشت از قبل پر شده و همان کد پرداختت را به حسابت وصل می‌کند؛ تغییرش نده. اگر کیف پول تلگرام داری، از «سفارش‌های من» دکمه‌ی خودش را بزن. سکه فقط بعد از تأیید پرداخت اضافه می‌شود، نه با کلیک");
     createOrder(pack, "ton", id)
       .then(()=>{ watchOrders(); loadOrders().catch(()=>{}); })
       .catch(()=>{ toast("ثبت سفارش روی سرور کامل نشد — سفارشت در «سفارش‌های من» هست و دکمه‌های پرداختش کار می‌کنند"); });
@@ -7597,7 +7649,7 @@ function watchOrders(){
   if (cp) cp.addEventListener("click", ()=>{
     Snd.tap();
     if (navigator.clipboard) navigator.clipboard.writeText(TON_WALLET_ADDR).catch(()=>{});
-    toast("آدرس ولت تون کپی شد — از کیف پول تلگرامت به همین آدرس بفرست");
+    toast("آدرس ولت تون کپی شد — موقع ارسال، کد کامل سفارشت را از بخش «سفارش‌های من» عیناً در توضیح (کامنت) انتقال بنویس؛ بدون آن کد، پرداختت به هیچ حسابی وصل نمی‌شود");
   });
   watchOrders();
 })();
